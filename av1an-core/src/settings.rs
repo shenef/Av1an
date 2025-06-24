@@ -10,6 +10,7 @@ use anyhow::{bail, ensure};
 use ffmpeg::format::Pixel;
 use itertools::{chain, Itertools};
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 use tracing_subscriber::filter::LevelFilter;
 
 use crate::{
@@ -227,10 +228,18 @@ impl EncodeArgs {
         }
 
         if self.concat == ConcatMethod::MKVMerge && which::which("mkvmerge").is_err() {
-            bail!(
-                "mkvmerge not found, but `--concat mkvmerge` was specified. Is it installed in \
-                 system path?"
-            );
+            if self.sc_only {
+                warn!(
+                    "mkvmerge not found, but `--concat mkvmerge` was specified. Make sure to \
+                     install mkvmerge or specify a different concatenation method (e.g. `--concat \
+                     ffmpeg`) before encoding."
+                );
+            } else {
+                bail!(
+                    "mkvmerge not found, but `--concat mkvmerge` was specified. Is it installed \
+                     in system path?"
+                );
+            }
         }
 
         if self.encoder == Encoder::x265 && self.concat != ConcatMethod::MKVMerge {
@@ -281,7 +290,8 @@ impl EncodeArgs {
 
         if self.ignore_frame_mismatch {
             warn!(
-                "The output video's frame count may differ, and VMAF calculations may be incorrect"
+                "The output video's frame count may differ, and target metric calculations may be \
+                 incorrect"
             );
         }
 
