@@ -23,6 +23,7 @@ use av1an_core::{
     Encoder,
     Input,
     InputPixelFormat,
+    InterpolationMethod,
     PixelFormat,
     ProbingSpeed,
     ProbingStatistic,
@@ -654,6 +655,39 @@ pub struct CliOpts {
     #[clap(long, help_heading = "Target Quality", value_parser = parse_qp_range)]
     pub qp_range: Option<(u32, u32)>,
 
+    #[rustfmt::skip]
+    /// Interpolation methods for target quality probing
+    ///
+    /// Controls which interpolation algorithms are used for the 4th and 5th probe rounds during target quality search.
+    /// Higher-order interpolation methods can provide more accurate quantizer predictions but may be less stable with noisy data.
+    ///
+    /// Format: --interp-method <method4>-<method5>
+    ///
+    /// 4th round methods (3 known points):
+    ///   linear    - Simple linear interpolation using the 2 closest points. Fast and stable, good for monotonic data.
+    ///   quadratic - Quadratic interpolation using all 3 points. Better curve fitting than linear, moderate accuracy.
+    ///   natural   - Natural cubic spline interpolation. Smooth curves with natural boundary conditions. (default)
+    ///
+    /// 5th round methods (4 known points):
+    ///   linear                  - Simple linear interpolation using 2 closest points. Most stable for narrow ranges.
+    ///   quadratic               - Quadratic interpolation (Lagrange method) using 3 best points. Good balance of accuracy and stability.
+    ///   natural                 - Natural cubic spline interpolation. Smooth curves, good for well-behaved data.
+    ///   pchip                   - Piecewise Cubic Hermite Interpolation. Preserves monotonicity, prevents overshooting. (default)
+    ///   catmull                 - Catmull-Rom spline interpolation. Smooth curves that pass through all points.
+    ///   akima                   - Akima spline interpolation. Reduces oscillations. Beware: Designed for 5 data points originally.
+    ///   cubic | cubicpolynomial - Cubic polynomial through all 4 points. High accuracy but can overshoot dramatically.
+    ///
+    /// Recommendations:
+    ///   - For most content:      natural-pchip      - Good balance of accuracy and stability (tested)
+    ///   - For difficult content: quadratic-natural  - More conservative, less prone to overshooting
+    ///   - For fine-tuning:       linear-linear      - Most predictable behavior, good for testing
+    ///
+    /// Examples:
+    ///   --interp-method natural-pchip      # Default: balanced accuracy and stability
+    ///   --interp-method quadratic-akima    # Experimental
+    ///   --interp-method linear-catmull     # Simple start, smooth finish
+    #[clap(long, help_heading = "Target Quality", value_parser = parse_interp_method, verbatim_doc_comment)]
+    pub interp_method: Option<(InterpolationMethod, InterpolationMethod)>,
     /// The metric used for Target Quality mode
     ///
     /// vmaf - Requires FFmpeg with VMAF enabled.
@@ -890,6 +924,7 @@ impl CliOpts {
                     model: self.vmaf_path.clone(),
                     probes: self.probes,
                     target: tq,
+                    interp_method: self.interp_method,
                     min_q,
                     max_q,
                     metric: self.target_metric,
@@ -1242,4 +1277,35 @@ fn parse_qp_range(s: &str) -> Result<(u32, u32), String> {
     } else {
         Err("Quality range must be specified as min-max (e.g., 10-50)".to_string())
     }
+}
+
+pub fn parse_interp_method(s: &str) -> anyhow::Result<(InterpolationMethod, InterpolationMethod)> {
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 2 {
+        return Err(anyhow::anyhow!(
+            "Invalid format. Use: --interp-method method4-method5"
+        ));
+    }
+
+    let method4 = parts[0]
+        .parse::<InterpolationMethod>()
+        .map_err(|_| anyhow::anyhow!("Invalid 4th round method: {}", parts[0]))?;
+    let method5 = parts[1]
+        .parse::<InterpolationMethod>()
+        .map_err(|_| anyhow::anyhow!("Invalid 5th round method: {}", parts[1]))?;
+
+    // Validate methods for correct round
+    match method4 {
+        InterpolationMethod::Linear
+        | InterpolationMethod::Quadratic
+        | InterpolationMethod::Natural => {},
+        _ => {
+            return Err(anyhow::anyhow!(
+                "Method '{}' not available for 4th round",
+                parts[0]
+            ))
+        },
+    }
+
+    Ok((method4, method5))
 }
