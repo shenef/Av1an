@@ -1,17 +1,17 @@
 # Scene Detection
 
-Name | Flag | Type | Default
---- | --- | --- | ---
-[Scenes](#scenes--s---scenes) | `-s`, `--scenes` | Path | 
-[Scene Detection Only](#scene-detection-only---sc-only) | `--sc-only` | 
-[Split Method](#split-method---split-method) | `--split-method` | `SPLIT_METHOD` | `av-scenechange`
-[Scene Detection Method](#scene-detection-method---sc-method) | `--sc-method` | `SC_METHOD` | `standard`
-[Scene Downscale Height](#scene-downscale-height---sc-downscale-height) | `--sc-downscale-height` | Integer | 
-[Scene Pixel Format](#scene-pixel-format---sc-pix-format) | `--sc-pix-format` | `PIXEL_FORMAT` | 
-[Extra Split Frames](#extra-split-frames--x---extra-split) | `-x`, `--extra-split` | Integer | 
-[Extra Split Seconds](#extra-split-seconds---extra-split-sec) | `--extra-split-sec` | Integer | 10
-[Minimum Scene Length](#minimum-scene-length---min-scene-len) | `--min-scene-len` | Integer | 24
-[Force Keyframes](#force-keyframes---force-keyframes) | `--force-keyframes` | Integer List
+Name | Flag | Type | Default |
+--- | --- | --- | --- |
+[Scenes](#scenes--s---scenes) | `-s`, `--scenes` | Path | |
+[Scene Detection Only](#scene-detection-only---sc-only) | `--sc-only` | | |
+[Split Method](#split-method---split-method) | `--split-method` | `SPLIT_METHOD` | `av-scenechange` |
+[Scene Detection Method](#scene-detection-method---sc-method) | `--sc-method` | `SC_METHOD` | `standard` |
+[Scene Downscale Height](#scene-downscale-height---sc-downscale-height) | `--sc-downscale-height` | Integer | |
+[Scene Pixel Format](#scene-pixel-format---sc-pix-format) | `--sc-pix-format` | `PIXEL_FORMAT` | |
+[Extra Split Frames](#extra-split-frames--x---extra-split) | `-x`, `--extra-split` | Integer | |
+[Extra Split Seconds](#extra-split-seconds---extra-split-sec) | `--extra-split-sec` | Integer | 10 |
+[Minimum Scene Length](#minimum-scene-length---min-scene-len) | `--min-scene-len` | Integer | 24 |
+[Force Keyframes](#force-keyframes---force-keyframes) | `--force-keyframes` | Integer List | |
 
 ## Scenes `-s`, `--scenes`
 
@@ -21,8 +21,8 @@ Scenes are stored as JSON.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv -s scenes.json` - Creates scenes file `./scenes.json`
-* `> av1an -i input.mkv -o output.mkv --scenes C:\Av1an\scenes\1.json` - Creates scenes file `C:\Av1an\scenes\1.json`
+- `> av1an -i input.mkv -o output.mkv -s scenes.json` - Creates scenes file `./scenes.json`
+- `> av1an -i input.mkv -o output.mkv --scenes C:\Av1an\scenes\1.json` - Creates scenes file `C:\Av1an\scenes\1.json`
 
 ## Scene Detection Only `--sc-only`
 
@@ -38,8 +38,8 @@ Method used to determine chunk boundaries.
 
 ### Possible Values
 
-* `av-scenechange`
-* `none`
+- `av-scenechange`
+- `none`
 
 ### Default
 
@@ -51,8 +51,8 @@ Scene detection algorithm to use for av-scenechange.
 
 ### Possible Values
 
-* `standard` - Most accurate, still reasonably fast. Uses a cost-based algorithm to determine keyframes.
-* `fast` - Very fast, but less accurate. Determines keyframes based on the raw difference between pixels.
+- `standard` - Most accurate, still reasonably fast. Uses a cost-based algorithm to determine keyframes.
+- `fast` - Very fast, but less accurate. Determines keyframes based on the raw difference between pixels.
 
 ### Default
 
@@ -76,8 +76,8 @@ Any valid pixel format name. See [FFmpeg](https://www.ffmpeg.org/doxygen/0.11/pi
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --sc-pix-format yuv420p` - Use YUV420P for scene detection
-* `> av1an -i input.mkv -o output.mkv --sc-pix-format yuv444p` - Use YUV444P for scene detection
+- `> av1an -i input.mkv -o output.mkv --sc-pix-format yuv420p` - Use YUV420P for scene detection
+- `> av1an -i input.mkv -o output.mkv --sc-pix-format yuv444p` - Use YUV444P for scene detection
 
 ## Extra Split Frames `-x`, `--extra-split`
 
@@ -87,9 +87,9 @@ When a scenecut is found whose distance to the previous scenecut is greater than
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv -x 100` - Adds an extra split every 100 frames
-* `> av1an -i input.mkv -o output.mkv --extra-split 240` - Adds an extra split every 240 frames
-* `> av1an -i input.mkv -o output.mkv --extra-split 0` - Disables adding extra splits
+- `> av1an -i input.mkv -o output.mkv -x 100` - Adds an extra split every 100 frames
+- `> av1an -i input.mkv -o output.mkv --extra-split 240` - Adds an extra split every 240 frames
+- `> av1an -i input.mkv -o output.mkv --extra-split 0` - Disables adding extra splits
 
 ## Extra Split Seconds `--extra-split-sec`
 
@@ -103,9 +103,9 @@ If not specified, `10` is used.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --extra-split-sec 10` - Adds an extra split every 10 seconds
-* `> av1an -i input.mkv -o output.mkv --extra-split-sec 5` - Adds an extra split every 5 seconds
-* `> av1an -i input.mkv -o output.mkv --extra-split-sec 15 --extra-split 50` - Adds an extra split every 50 frames, ignoring `--extra-split-sec 15`
+- `> av1an -i input.mkv -o output.mkv --extra-split-sec 10` - Adds an extra split every 10 seconds
+- `> av1an -i input.mkv -o output.mkv --extra-split-sec 5` - Adds an extra split every 5 seconds
+- `> av1an -i input.mkv -o output.mkv --extra-split-sec 15 --extra-split 50` - Adds an extra split every 50 frames, ignoring `--extra-split-sec 15`
 
 ## Minimum Scene Length `--min-scene-len`
 
@@ -119,7 +119,7 @@ If not specified, `24` is used.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --min-scene-len 60` - Adds an extra split every 60 frames
+- `> av1an -i input.mkv -o output.mkv --min-scene-len 60` - Adds an extra split every 60 frames
 
 ## Force Keyframes `--force-keyframes`
 
@@ -131,4 +131,4 @@ A comma-separated list of frame numbers as positive integers.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --force-keyframes 82,346,622` - Force frames 82, 346, and 622 as keyframes
+- `> av1an -i input.mkv -o output.mkv --force-keyframes 82,346,622` - Force frames 82, 346, and 622 as keyframes

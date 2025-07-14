@@ -31,7 +31,7 @@ The resulting binary will be the file `./target/release/av1an`.
 
 ## Compiling on Windows
 
-If you just want a current build of Av1an that is newer than the last official release, you can find a pre-built binary of the current `master` branch at https://github.com/master-of-zen/Av1an/releases/tag/latest.
+If you just want a current build of Av1an that is newer than the last official release, you can find a pre-built binary of the current `master` branch at <https://github.com/master-of-zen/Av1an/releases/tag/latest>.
 
 If you want to build the binary yourself, you will need the following dependencies:
 
@@ -42,12 +42,14 @@ If you want to build the binary yourself, you will need the following dependenci
 - [FFmpeg](https://github.com/GyanD/codexffmpeg/releases/download/7.0.2/ffmpeg-7.0.2-full_build-shared.7z) (thanks to [gyan](https://github.com/GyanD) for providing these builds)
 - [LLVM](https://releases.llvm.org)
 
-### FFmpeg setup:
+### FFmpeg setup
+
 - Extract the file `ffmpeg-7.0.2-full_build-shared.7z` to a directory.
 - Create a new environment variable named `FFMPEG_DIR` and set it to the directory path where you extracted `ffmpeg-7.0.2-full_build-shared.7z`.
   - (For example, set `FFMPEG_DIR` to `C:\Users\Username\Downloads\ffmpeg-7.0.2-full_build-shared`)
-	
-### VapourSynth setup:
+
+### VapourSynth setup
+
 - Extract the contents of the portable VapourSynth zip file to a directory.
 - Create a new environment variable named `VAPOURSYNTH_LIB_DIR` and set it to the directory path where you extracted the file, appending `\sdk\lib64` to the path.
   - (For example, set `VAPOURSYNTH_LIB_DIR` to `C:\Users\Username\Downloads\VapourSynth64-Portable-R70\sdk\lib64`)

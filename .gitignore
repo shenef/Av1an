@@ -152,3 +152,4 @@ Upload.sh
 *.json
 
 logs/
+site/book/

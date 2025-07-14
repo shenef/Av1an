@@ -1,6 +1,10 @@
 [book]
 authors = ["Av1an Contributors"]
 language = "en"
-multilingual = false
 src = "src"
 title = "Av1an Documentation"
+
+[output.html]
+no-section-label = true
+git-repository-url = "https://github.com/rust-av/Av1an"
+git-repository-icon = "fa-github"

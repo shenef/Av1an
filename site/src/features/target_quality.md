@@ -2,10 +2,10 @@
 
 ## Table of Contents
 
-1. [Description](#Description)
-2. [Requirements](#Requirements)
-3. [Commands](#Commands)
-4. [Example of usage](#Example-of-usage)
+1. [Description](#description)
+2. [Requirements](#requirements)
+3. [Commands](#commands)
+4. [Example of usage](#example-of-usage)
 
 ## Description
 
@@ -110,6 +110,6 @@ Filter with crop should be supplied for both ffmpeg options and vmaf filter
 
 `--ffmpeg "-vf crop=3840:1900:0:0" --vmaf-filter "crop=3840:1900:0:0" --vmaf-res "3840x1900"`
 
-or cropping and resizing could be done with vapoursynth script 
+or cropping and resizing could be done with vapoursynth script
 ` -i 4k_crop.vpy --vmaf-res "3840x1600" --target-quality 90 -o test.mkv `
 ` -i 4k_crop.vpy --probe-res "1920x800" --target-quality 3 --target-metric butteraugli-3 -o test.mkv `

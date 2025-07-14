@@ -6,7 +6,7 @@ This will be a quick guide for setting options svt-av1 when using with Av1an. Fo
 
 Make sure your svt-av1 encoder is up-to-date.
 
-# Rate control
+## Rate control
 
 ## --rc
 
@@ -16,9 +16,9 @@ The `--rc` option selects what rate control strategy you want to use.
 - `--rc 1` - Variable bit rate
 - `--rc 2` - Constant bit rate
 
-## Constant rate factor 
+## Constant rate factor
 
-```
+```sh
 --rc 0 --crf
 ```
 
@@ -26,13 +26,13 @@ Constant rate factor, a.k.a. constant quality. This is the most common way of de
 
 **Example:**
 
-```
+```sh
 av1an ... -v " --rc 0 --crf 24 --preset 4 --input-depth 10 --tune 0" ...
 ```
 
 ## Variable bit-rate
 
-```
+```sh
 --rc 1 --tbr
 ```
 
@@ -40,13 +40,13 @@ Variable bit-rate. Requires you to set target bit-rate `--tbr`.
 
 **Example:**
 
-```
+```sh
 av1an ... --passes 2 -v " --rc 1 --tbr 2000 --preset 4 --input-depth 10 --tune 0" ...
 ```
 
-# Preset
+## Preset
 
-```
+```sh
 --preset
 ```
 
@@ -54,13 +54,13 @@ If RC controls the compression strategy, then the preset determines what optimis
 
 **Example:**
 
-```
+```sh
 ... --preset 4 ...
 ```
 
-# Tune
+## Tune
 
-```
+```sh
 --tune
 ```
 
@@ -69,9 +69,9 @@ If RC controls the compression strategy, then the preset determines what optimis
 
 VQ is subjective quality, while PSNR is an objective measurement. Most will recommend using VQ, it seems to make the image sharper as well. Default is PSNR.
 
-# Film grain
+## Film grain
 
-```
+```sh
 --film-grain --film-grain-denoise
 ```
 
@@ -81,13 +81,13 @@ You can also disable the encoders denoise, it is possible to use denoising filte
 
 **Example:**
 
-```
+```sh
 ... --film-grain 10 --film-grain-denoise 0 ...
 ```
 
-# Input depth
+## Input depth
 
-```
+```sh
 --input-depth 10
 ```
 
@@ -95,9 +95,9 @@ You can choose a bit-depth of 8bit or 10bit. It is almost always recommended to 
 
 You might not want to use 10bit if fast encode/decode is more important than video quality.
 
-# Lookahead and key frames
+## Lookahead and key frames
 
-```
+```sh
 --lookahead --keyint
 ```
 
@@ -109,12 +109,12 @@ Modern video files include key frames which are Intra coded pictures, and Inter 
 
 **24fps:**
 
-```
+```sh
 --lookahead 120 --keyint 240
 ```
 
 **30fps:**
 
-```
+```sh
 --lookahead 120 --keyint 300
 ```

@@ -20,7 +20,7 @@ GIT: [AOM](https://aomedia.googlesource.com/aom/)
 | --tile-columns=arg | Number of tile columns to use, log2 (number to power of 2). With --tile-columns=2, will result in 4 tile columns. |
 | --tile-rows=arg | Number of tile rows to use, log2  (number to power of 2). With --tile-rows=1 will result in 2 tile rows. |
 | --threads=arg | Limit on allowed number of threads to use. Up to 64.|
-| --lag-in-frames=arg | Number of lagged frames used by the encoder for lookahead and alternate reference frame placement(default 19, max 35).
+| --lag-in-frames=arg | Number of lagged frames used by the encoder for lookahead and alternate reference frame placement(default 19, max 35).|
 | --enable-cdef=arg | Enable the constrained directional enhancement filter (0: false, 1: true (default)). CDEF is a filter used to clean up artifacts inflicted by encoder |
 | --aq-mode=arg | Adaptive quantization mode(0: default. 1: Variance. 2: Complexity. 3: Cyclic Refresh) |
 | --tune-content=arg | Tune content type (default,screen). |
@@ -35,14 +35,12 @@ GIT: [AOM](https://aomedia.googlesource.com/aom/)
 | --mv-cost-upd-freq=arg | Update freq for mv costs(motion vector estimation cost calculation) (0: SB(SuperBlock), 1: SB Row per Tile, 2: Tile, 3: Off.) |
 | --enable-chroma-deltaq=arg | Enable chroma delta quant (0: false (default), 1: true). May be broken below --cq-level=15. |
 | --color-primaries=arg | Color primaries (CICP) of input content: bt709, unspecified, bt601, bt470m, bt470bg, smpte240, film, bt2020, xyz, smpte431, smpte432, ebu3213. |
-| --transfer-characteristics=arg | Transfer characteristics (CICP) of input content(unspecified, bt709, bt470m, bt470bg, bt601, smpte240, lin, log100, log100sq10, iec61966, bt1361, srgb, bt2020-10bit, bt2020-12bit, smpte2084, hlg, smpte428. | Leave at default unless you have HDR content or your source's transfer characteristics are different; in that case, set it to whatever your content is.
+| --transfer-characteristics=arg | Transfer characteristics (CICP) of input content(unspecified, bt709, bt470m, bt470bg, bt601, smpte240, lin, log100, log100sq10, iec61966, bt1361, srgb, bt2020-10bit, bt2020-12bit, smpte2084, hlg, smpte428. |
 | --matrix-coefficients=arg | Matrix coefficients (CICP) of input content: identity, bt709, unspecified, fcc73, bt470bg, bt601, smpte240, ycgco, bt2020ncl, bt2020cl, smpte2085, chromncl, chromcl, ictcp.|
 
 ### Example settings and explanation
 
-
-
-##### Constant quality
+#### Constant quality
 
 ` --end-usage=q --cq-level=30 --cpu-used=4 --threads=64 `
 
@@ -50,13 +48,13 @@ It is recommended to set it the rate control --end-usage=q to get the highest qu
 
 It is recommended to the --cq-level in range  20-40 depending on your source.
 
-##### Target Bitrate
+#### Target Bitrate
 
 `` --end-usage=vbr --target-bitrate=1000 --cpu-used=4 --threads=64 ``
 
 To get good efficiency with VBR, it is strongly recommended to use aomenc in 2-pass mode(which is the default in av1an).
 
-##### Tiles(tile columns and rows)
+#### Tiles(tile columns and rows)
 
 `... --tile-columns=2 --tile-rows=1 ...`
 

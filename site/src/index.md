@@ -1,33 +1,22 @@
 # Av1an
 
-![av1an fully utilizing a 96-core CPU for video encoding](https://github.com/master-of-zen/Av1an/assets/46526140/15f68b63-7be5-45e8-bf48-ae7eb2fc4bb6)
+<a title="av1an fully utilizing a 96-core CPU for video encoding" href="./assets/96-core demo.jpg">
+  <img src="./assets/96-core_demo_thumb.webp">
+</a>
 
-[![Discord server](https://discordapp.com/api/guilds/696849974230515794/embed.png)](https://discord.gg/Ar8MvJh)
-[![CI tests](https://github.com/master-of-zen/Av1an/actions/workflows/tests.yml/badge.svg)](https://github.com/master-of-zen/Av1an/actions/workflows/tests.yml)
-[![](https://img.shields.io/crates/v/av1an.svg)](https://crates.io/crates/av1an)
-[![](https://tokei.rs/b1/github/master-of-zen/Av1an?category=code)](https://github.com/master-of-zen/Av1an)
-
-<a href="https://www.buymeacoffee.com/master_of_zen" target="_blank"><img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" style="height: 60px !important;width: 217px !important;" ></a>
-
-Av1an is a video encoding framework. It can increase your encoding speed and improve cpu utilization by running multiple encoder processes in parallel. Key features include [Target Quality](https://rust-av.github.io/Av1an/Features/TargetQuality), [VMAF plotting](https://rust-av.github.io/Av1an/Cli/vmaf), and more available to improve video encoding.
+Av1an is a video encoding framework. It can increase your encoding speed and improve CPU utilization by running multiple encoder processes in parallel. Key features include [Target Quality](https://rust-av.github.io/Av1an/Features/TargetQuality), [VMAF plotting](https://rust-av.github.io/Av1an/Cli/vmaf), and more available to improve video encoding.
 
 For help with av1an, please reach out to us on [Discord](https://discord.gg/Ar8MvJh) or file a GitHub issue.
 
 ## Features
 
-- Hyper-scalable video encoding
-- [Target Quality mode](https://rust-av.github.io/Av1an/Cli/target_quality), using metrics to control the encoder's rate control to achieve the desired video quality
-- [VapourSynth](http://www.vapoursynth.com) script support
+- [Hyper-scalable video encoding](./workers.md)
+- [Target Quality mode](./features/target_quality.md), using metrics to control the encoder's rate control to achieve the desired video quality
+- [VapourSynth](./vapoursynth.md) script support
 - Cancel and resume encoding without loss of progress
 - Minimal and clean CLI
-- Docker images available
+- [Docker images](./installation/docker.md) available
 - Cross-platform application written in Rust
-
-## Usage
-
-Av1an is a command-line application that can run on Windows, Linux, and macOS. See the [Installation](#installation) section below for details on how to install it.
-
-For a complete reference, refer to our [documentation](https://rust-av.github.io/Av1an/) or run `av1an --help`.
 
 ### Examples
 
@@ -95,7 +84,3 @@ If you want to install the L-SMASH, FFMS2, or BestSource plugins and are on Wind
 1. Open your VapourSynth installation directory
 2. Open a command prompt or PowerShell window via Shift + Right click
 3. Run `python3 vsrepo.py install lsmas ffms2 bs vszip julek`
-
-## Developing
-
-See [Developing and Contributing](https://rust-av.github.io/Av1an/contributing) for a guide on developing Av1an and prepare for a Pull Request.

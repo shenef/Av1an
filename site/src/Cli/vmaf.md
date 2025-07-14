@@ -1,13 +1,12 @@
 # VMAF
 
-Name | Flag | Type | Default
---- | --- | --- | ---
-[VMAF](#vmaf---vmaf) | `--vmaf` || 
-[VMAF Path](#vmaf-path---vmaf-path) | `--vmaf-path` | String | 
-[VMAF Resolution](#vmaf-resolution---vmaf-res) | `--vmaf-res` | String | `1920x1080`
-[VMAF Threads](#vmaf-threads---vmaf-threads) | `--vmaf-threads` | Integer | 
-[VMAF Filter](#vmaf-filter---vmaf-filter) | `--vmaf-filter` | String | 
-
+Name | Flag | Type | Default |
+--- | --- | --- | --- |
+[VMAF](#vmaf---vmaf) | `--vmaf` | | |
+[VMAF Path](#vmaf-path---vmaf-path) | `--vmaf-path` | String | |
+[VMAF Resolution](#vmaf-resolution---vmaf-res) | `--vmaf-res` | String | `1920x1080` |
+[VMAF Threads](#vmaf-threads---vmaf-threads) | `--vmaf-threads` | Integer | |
+[VMAF Filter](#vmaf-filter---vmaf-filter) | `--vmaf-filter` | String | |
 
 ## VMAF `--vmaf`
 
@@ -21,8 +20,6 @@ Path to VMAF model.
 
 This option is also used by [Target Quality](./target_quality.md) (`--target-quality`).
 
-### Default
-
 If not specified, FFmpeg's default is used.
 
 ## VMAF Resolution `--vmaf-res`
@@ -30,8 +27,6 @@ If not specified, FFmpeg's default is used.
 Resolution used for VMAF calculation.
 
 If set to the input resolution, the output video will be scaled to the resolution of the input video.
-
-### Default
 
 If not specified, `1920x1080` is used.
 

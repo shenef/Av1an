@@ -3,6 +3,7 @@
 The [docker image](https://hub.docker.com/r/masterofzen/av1an) is frequently updated and includes all supported encoders and all optional components. It is based on Arch Linux and provides recent versions of encoders and libraries.
 
 The image provides three types of tags that you can use:
+
 - `masterofzen/av1an:master` for the latest commit from `master`
 - `masterofzen/av1an:sha-#######` for a specific git commit (short hash)
 

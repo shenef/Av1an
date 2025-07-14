@@ -5,7 +5,6 @@ GIT: [rav1e](https://github.com/xiph/rav1e)
 ## Table of Contents
 
 - [Important command line options](#important-command-line-options)
-- [Example settings and explanation](#example-settings-and-explanation)
 
 ### Important command line options
 

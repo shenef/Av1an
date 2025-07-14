@@ -1,28 +1,28 @@
 # General
 
-Name | Flag | Type | Default
---- | --- | --- | ---
-[Input](#input--i) | `-i` | Path
-[Proxy](#proxy---temp) | `--proxy` | Path
-[Output](#output--o) | `-o` | Path
-[Temporary](#temporary---temp) | `--temp` | Path | Input file name hash
-[Quiet](#quiet--q---quiet) | `-q` | 
-[Verbose](#verbose---verbose) | `--verbose` | 
-[Log File](#log-file--l---log-file) | `-l`, `--log-file` | Path | `./logs/av1an.log`
-[Log Level](#log-level---log-level) | `--log-level` | `LOG_LEVEL` | `debug`
-[Resume](#resume---resume) | `--resume` | 
-[Keep](#keep--k---keep) | `-k`, `--keep` | 
-[Force](#force---force) | `--force` | 
-[No Defaults](#no-defaults---no-defaults) | `--no-defaults` | 
-[Overwrite](#overwrite--y) | `-y` | 
-[Never Overwrite](#never-overwrite--n) | `-n` | 
-[Max Tries](#max-tries---max-tries) | `--max-tries` | Integer | 3
-[Workers](#workers---workers) | `--workers` | Integer | `0` (Automatic)
-[Thread Affinity](#thread-affinity---set-thread-affinity) | `--set-thread-affinity` | Integer | 
-[Scaler](#scaler---scaler) | `--scaler` | `SCALER` | `bicubic`
-[VSPipe Arguments](#vspipe-arguments---vspipe-args) | `--vspipe-args` | String List | 
-[Help](#help--h---help) | `-h`, `--help` | 
-[Version](#version--v---version) | `-V`, `--version` | 
+Name | Flag | Type | Default |
+--- | --- | --- | --- |
+[Input](#input--i) | `-i` | Path | |
+[Proxy](#proxy---proxy) | `--proxy` | Path | |
+[Output](#output--o) | `-o` | Path | |
+[Temporary](#temporary---temp) | `--temp` | Path | Input file name hash |
+[Quiet](#quiet--q---quiet) | `-q` | | |
+[Verbose](#verbose---verbose) | `--verbose` | | |
+[Log File](#log-file--l---log-file) | `-l`, `--log-file` | Path | `./logs/av1an.log` |
+[Log Level](#log-level---log-level) | `--log-level` | `LOG_LEVEL` | `debug` |
+[Resume](#resume---resume) | `--resume` | | |
+[Keep](#keep--k---keep) | `-k`, `--keep` | | |
+[Force](#force---force) | `--force` | | |
+[No Defaults](#no-defaults---no-defaults) | `--no-defaults` | | |
+[Overwrite](#overwrite--y) | `-y` | | |
+[Never Overwrite](#never-overwrite--n) | `-n` | | |
+[Max Tries](#max-tries---max-tries) | `--max-tries` | Integer | 3 |
+[Workers](#workers--w---workers) | `--workers` | Integer | `0` (Automatic) |
+[Thread Affinity](#thread-affinity---set-thread-affinity) | `--set-thread-affinity` | Integer | |
+[Scaler](#scaler---scaler) | `--scaler` | `SCALER` | `bicubic` |
+[VSPipe Arguments](#vspipe-arguments---vspipe-args) | `--vspipe-args` | String List | |
+[Help](#help--h---help) | `-h`, `--help` | | |
+[Version](#version--v---version) | `-V`, `--version` | | |
 
 ## Input `-i`
 
@@ -32,10 +32,10 @@ Can be a video or a VapourSynth (`.py`, `.vpy`) script.
 
 ### Examples
 
-* `> av1an -i ./input.mkv -o output.mkv`
-* `> av1an -i C:\Videos\input.mp4 -o output.mkv`
-* `> av1an -i /home/videos/vapoursynth/script.vpy -o output.mkv`
-* `> av1an -i ./script.py -o output.mkv`
+- `> av1an -i ./input.mkv -o output.mkv`
+- `> av1an -i C:\Videos\input.mp4 -o output.mkv`
+- `> av1an -i /home/videos/vapoursynth/script.vpy -o output.mkv`
+- `> av1an -i ./script.py -o output.mkv`
 
 ## Proxy `--proxy`
 
@@ -47,8 +47,8 @@ Useful for when the Input is a very intermediary file or a VapourSynth script th
 
 ### Examples
 
-* `> av1an -i complex_input.vpy --proxy input.mkv -o output.mkv --target-quality 98` - Encodes with `complex_input.vpy` and uses `input.mkv` for Scene Detection and Target Quality
-* `> av1an -i complex_input.vpy --proxy simple_input.vpy -o output.mkv` - Encodes with `complex_input.vpy` and uses `simple_input.vpy` for Scene Detection
+- `> av1an -i complex_input.vpy --proxy input.mkv -o output.mkv --target-quality 98` - Encodes with `complex_input.vpy` and uses `input.mkv` for Scene Detection and Target Quality
+- `> av1an -i complex_input.vpy --proxy simple_input.vpy -o output.mkv` - Encodes with `complex_input.vpy` and uses `simple_input.vpy` for Scene Detection
 
 ## Output `-o`
 
@@ -56,9 +56,9 @@ Video output file.
 
 ### Examples
 
-* `> av1an -i input.mkv -o C:\Encodes\output.mkv`
-* `> av1an -i input.mkv -o output.mkv`
-* `> av1an -i input.mkv -o /home/videos/av1an/done.mkv`
+- `> av1an -i input.mkv -o C:\Encodes\output.mkv`
+- `> av1an -i input.mkv -o output.mkv`
+- `> av1an -i input.mkv -o /home/videos/av1an/done.mkv`
 
 ## Temporary `--temp`
 
@@ -70,9 +70,9 @@ If not specified, the temporary directory name is a hash of the input file name.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv` - Creates temporary directory `./.bf937a7/`
-* `> av1an -i input.mkv -o output.mkv --temp temporary` - Creates temporary directory `./temporary/`
-* `> av1an -i input.mkv -o output.mkv --temp C:\tmp\av1an` - Creates temporary directory `C:\tmp\av1an\`
+- `> av1an -i input.mkv -o output.mkv` - Creates temporary directory `./.bf937a7/`
+- `> av1an -i input.mkv -o output.mkv --temp temporary` - Creates temporary directory `./temporary/`
+- `> av1an -i input.mkv -o output.mkv --temp C:\tmp\av1an` - Creates temporary directory `C:\tmp\av1an\`
 
 ## Quiet `-q`, `--quiet`
 
@@ -94,9 +94,9 @@ If not specified, logs to `./logs/av1an.log.{DATE}` where `{DATE}` is the curren
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv` - Logs to `./logs/av1an.log.2020-1-10`
-* `> av1an -i input.mkv -o output.mkv -l log.txt` - Logs to `./logs/log.txt`
-* `> av1an -i input.mkv -o output.mkv --log-file ./today/1.log` - Logs to `./logs/today/1.log`
+- `> av1an -i input.mkv -o output.mkv` - Logs to `./logs/av1an.log.2020-1-10`
+- `> av1an -i input.mkv -o output.mkv -l log.txt` - Logs to `./logs/log.txt`
+- `> av1an -i input.mkv -o output.mkv --log-file ./today/1.log` - Logs to `./logs/today/1.log`
 
 ## Log Level `--log-level`
 
@@ -104,11 +104,11 @@ Set log level for log file (does not affect command-line log level)
 
 ### Possible Values
 
-* `error`: Designates very serious errors.
-* `warn`: Designates hazardous situations.
-* `info`: Designates useful information.
-* `debug`: Designates lower priority information.
-* `trace`: Designates very low priority, often extremely verbose, information. Includes rav1e scenechange decision info.
+- `error`: Designates very serious errors.
+- `warn`: Designates hazardous situations.
+- `info`: Designates useful information.
+- `debug`: Designates lower priority information.
+- `trace`: Designates very low priority, often extremely verbose, information. Includes rav1e scenechange decision info.
 
 ### Default
 
@@ -162,9 +162,9 @@ If not specified or set to `0`, the number of workers is automatically determine
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv` - Spawns workers automatically
-* `> av1an -i input.mkv -o output.mkv -w 4` - Spawns 4 workers
-* `> av1an -i input.mkv -o output.mkv --workers 2` - Spawns 2 workers
+- `> av1an -i input.mkv -o output.mkv` - Spawns workers automatically
+- `> av1an -i input.mkv -o output.mkv -w 4` - Spawns 4 workers
+- `> av1an -i input.mkv -o output.mkv --workers 2` - Spawns 2 workers
 
 ## Thread Affinity `--set-thread-affinity`
 
@@ -194,8 +194,8 @@ If not specified, the scaler is set to `bicubic`.
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --sc-downscale-height 720 --scaler bilinear` - Downscale to 720p using bilinear scaling
-* `> av1an -i input.mkv -o output.mkv --sc-downscale-height 540 --scaler lanczos3` - Downscale to 540p using lanczos3
+- `> av1an -i input.mkv -o output.mkv --sc-downscale-height 720 --scaler bilinear` - Downscale to 720p using bilinear scaling
+- `> av1an -i input.mkv -o output.mkv --sc-downscale-height 540 --scaler lanczos3` - Downscale to 540p using lanczos3
 
 ## VSPipe Arguments `--vspipe-args`
 
@@ -209,8 +209,8 @@ Can be a string or a list of strings separated by spaces in the format of `"key1
 
 ### Examples
 
-* `> av1an -i input.mkv -o output.mkv --vspipe-args "message=fluffy kittens" "head=empty"` - Passes `message=fluffy kittens` and `head=empty` to vspipe with generated loadscript.vpy
-* `> av1an -i input.vpy -o output.mkv --vspipe-args "blur=10"` - Passes `blur=10` to vspipe with input.vpy
+- `> av1an -i input.mkv -o output.mkv --vspipe-args "message=fluffy kittens" "head=empty"` - Passes `message=fluffy kittens` and `head=empty` to vspipe with generated loadscript.vpy
+- `> av1an -i input.vpy -o output.mkv --vspipe-args "blur=10"` - Passes `blur=10` to vspipe with input.vpy
 
 ## Help `-h`, `--help`
 
