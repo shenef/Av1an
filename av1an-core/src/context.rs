@@ -816,9 +816,9 @@ impl Av1anContext {
         } else {
             let zones = parse_zones(&self.args, self.frames)?;
             self.scene_factory.compute_scenes(&self.args, &zones)?;
+            self.scene_factory.write_scenes_to_file(scene_file)?;
         }
         self.frames = self.scene_factory.get_frame_count();
-        self.scene_factory.write_scenes_to_file(scene_file)?;
         self.scene_factory.get_split_scenes()
     }
 
