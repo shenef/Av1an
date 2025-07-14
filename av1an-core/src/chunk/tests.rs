@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use super::*;
+use crate::ChunkMethod;
 
 #[test]
 fn test_chunk_name_1() {
@@ -8,8 +9,9 @@ fn test_chunk_name_1() {
         temp:                  "none".to_owned(),
         index:                 1,
         input:                 Input::Video {
-            path:        "test.mkv".into(),
-            script_text: None,
+            path:         "test.mkv".into(),
+            temp:         "none".to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
@@ -31,8 +33,9 @@ fn test_chunk_name_10000() {
         temp:                  "none".to_owned(),
         index:                 10000,
         input:                 Input::Video {
-            path:        "test.mkv".into(),
-            script_text: None,
+            path:         "test.mkv".into(),
+            temp:         "none".to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
@@ -55,8 +58,9 @@ fn test_chunk_output() {
         temp:                  "d".to_owned(),
         index:                 1,
         input:                 Input::Video {
-            path:        "test.mkv".into(),
-            script_text: None,
+            path:         "test.mkv".into(),
+            temp:         "d".to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
@@ -83,8 +87,9 @@ fn test_chunk_frames() {
         temp:                  "none".to_owned(),
         index:                 1,
         input:                 Input::Video {
-            path:        "test.mkv".into(),
-            script_text: None,
+            path:         "test.mkv".into(),
+            temp:         "none".to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
@@ -107,11 +112,15 @@ fn test_apply_photon_noise_args_with_noise() -> anyhow::Result<()> {
     let mut ch = Chunk {
         temp:                  temp_dir.path().to_str().unwrap().to_owned(),
         index:                 1,
-        input:                 Input::Video {
-            path:        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("test-files/blank_1080p.mkv"),
-            script_text: None,
-        },
+        input:                 Input::new(
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test-files/blank_1080p.mkv"),
+            vec![],
+            temp_dir.path().to_str().unwrap(),
+            ChunkMethod::LSMASH,
+            None,
+            None,
+            None,
+        )?,
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
         start_frame:           0,
@@ -137,9 +146,10 @@ fn test_apply_photon_noise_args_no_noise() -> anyhow::Result<()> {
         temp:                  temp_dir.path().to_str().unwrap().to_owned(),
         index:                 1,
         input:                 Input::Video {
-            path:        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            path:         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("test-files/blank_1080p.mkv"),
-            script_text: None,
+            temp:         temp_dir.path().to_str().unwrap().to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
@@ -166,9 +176,10 @@ fn test_apply_photon_noise_args_unsupported_encoder() -> anyhow::Result<()> {
         temp:                  temp_dir.path().to_str().unwrap().to_owned(),
         index:                 1,
         input:                 Input::Video {
-            path:        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            path:         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("test-files/blank_1080p.mkv"),
-            script_text: None,
+            temp:         temp_dir.path().to_str().unwrap().to_owned(),
+            chunk_method: ChunkMethod::LSMASH,
         },
         source_cmd:            vec!["".into()],
         output_ext:            "ivf".to_owned(),
