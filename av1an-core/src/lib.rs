@@ -6,7 +6,10 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     string::ToString,
-    sync::atomic::{AtomicBool, AtomicUsize},
+    sync::{
+        atomic::{AtomicBool, AtomicUsize},
+        Mutex,
+    },
     thread::available_parallelism,
     time::Instant,
 };
@@ -18,9 +21,8 @@ use av_format::rational::Rational64;
 use chunk::Chunk;
 use dashmap::DashMap;
 use once_cell::sync::{Lazy, OnceCell};
-use parking_lot::Mutex;
 use serde::{Deserialize, Serialize};
-use strum::{Display, EnumString, FromRepr, IntoStaticStr};
+use strum::{Display, EnumString, IntoStaticStr};
 use tracing::info;
 
 pub use crate::{
@@ -95,7 +97,7 @@ pub enum Input {
 
 impl Input {
     #[inline]
-    #[allow(clippy::too_many_arguments)]
+    #[expect(clippy::too_many_arguments)]
     pub fn new<P: AsRef<Path> + Into<PathBuf>>(
         path: P,
         vspipe_args: Vec<String>,
@@ -103,7 +105,7 @@ impl Input {
         chunk_method: ChunkMethod,
         scene_detection_downscale_height: Option<usize>,
         scene_detection_pixel_format: Option<FFPixelFormat>,
-        scene_detection_scaler: Option<String>,
+        scene_detection_scaler: Option<&str>,
         is_proxy: bool,
     ) -> anyhow::Result<Self> {
         let input = if let Some(ext) = path.as_ref().extension() {
@@ -111,7 +113,7 @@ impl Input {
                 let input_path = path.into();
                 let script_text = read_to_string(input_path.clone())?;
                 Ok::<Self, anyhow::Error>(Self::VapourSynth {
-                    path: input_path.clone(),
+                    path: input_path,
                     vspipe_args,
                     script_text,
                     is_proxy,
@@ -119,7 +121,7 @@ impl Input {
             } else {
                 let input_path = path.into();
                 Ok(Self::Video {
-                    path: input_path.clone(),
+                    path: input_path,
                     temp: temporary_directory.to_owned(),
                     chunk_method,
                     is_proxy,
@@ -128,7 +130,7 @@ impl Input {
         } else {
             let input_path = path.into();
             Ok(Self::Video {
-                path: input_path.clone(),
+                path: input_path,
                 temp: temporary_directory.to_owned(),
                 chunk_method,
                 is_proxy,
@@ -145,7 +147,7 @@ impl Input {
                 chunk_method,
                 scene_detection_downscale_height,
                 scene_detection_pixel_format,
-                scene_detection_scaler.clone().unwrap_or_default(),
+                scene_detection_scaler.unwrap_or_default(),
                 is_proxy,
             )?;
             if !cache_file_already_exists {
@@ -227,7 +229,7 @@ impl Input {
         &self,
         scene_detection_downscale_height: Option<usize>,
         scene_detection_pixel_format: Option<FFPixelFormat>,
-        scene_detection_scaler: Option<String>,
+        scene_detection_scaler: Option<&str>,
     ) -> anyhow::Result<String> {
         match &self {
             Input::VapourSynth {
@@ -268,14 +270,15 @@ impl Input {
         match &self {
             Input::VapourSynth {
                 path, ..
-            } => path.to_path_buf(),
+            } => path.clone(),
             Input::Video {
                 temp, ..
             } if self.is_vapoursynth_script() => {
                 let temp: &Path = temp.as_ref();
-                temp.join("split").join(match self.is_proxy() {
-                    true => "loadscript_proxy.vpy",
-                    false => "loadscript.vpy",
+                temp.join("split").join(if self.is_proxy() {
+                    "loadscript_proxy.vpy"
+                } else {
+                    "loadscript.vpy"
                 })
             },
             Input::Video {
@@ -328,7 +331,7 @@ impl Input {
     pub fn clip_info(&self) -> anyhow::Result<ClipInfo> {
         const FAIL_MSG: &str = "Failed to get number of frames for input video";
 
-        let mut cache = CLIP_INFO_CACHE.lock();
+        let mut cache = CLIP_INFO_CACHE.lock().expect("mutex should acquire lock");
         let key = CacheKey {
             input:    self.clone(),
             is_proxy: self.is_proxy(),
@@ -345,7 +348,7 @@ impl Input {
                 ffmpeg::get_clip_info(path.as_path()).context(FAIL_MSG)?
             },
             path => {
-                vapoursynth::get_clip_info(path, self.as_vspipe_args_map()?).context(FAIL_MSG)?
+                vapoursynth::get_clip_info(path, &self.as_vspipe_args_map()?).context(FAIL_MSG)?
             },
         };
         cache.insert(key, info);
@@ -373,7 +376,7 @@ impl Input {
     /// Returns the vector of arguments passed to the vspipe python environment
     /// If the input is not a vapoursynth script, the vector will be empty.
     #[inline]
-    pub fn as_vspipe_args_vec(&self) -> Result<Vec<String>, anyhow::Error> {
+    pub fn as_vspipe_args_vec(&self) -> anyhow::Result<Vec<String>> {
         match self {
             Input::VapourSynth {
                 vspipe_args, ..
@@ -388,8 +391,10 @@ impl Input {
     /// python environment If the input is not a vapoursynth script, the map
     /// will be empty.
     #[inline]
-    pub fn as_vspipe_args_map(&self) -> Result<OwnedMap<'static>, anyhow::Error> {
-        let mut args_map = OwnedMap::new(API::get().unwrap());
+    pub fn as_vspipe_args_map(&self) -> anyhow::Result<OwnedMap<'static>> {
+        let mut args_map = OwnedMap::new(
+            API::get().ok_or_else(|| anyhow::anyhow!("failed to access Vapoursynth API"))?,
+        );
 
         for arg in self.as_vspipe_args_vec()? {
             let split: Vec<&str> = arg.split_terminator('=').collect();
@@ -402,7 +407,7 @@ impl Input {
     }
 
     #[inline]
-    pub fn as_vspipe_args_hashmap(&self) -> Result<HashMap<String, String>, anyhow::Error> {
+    pub fn as_vspipe_args_hashmap(&self) -> anyhow::Result<HashMap<String, String>> {
         let mut args_map = HashMap::new();
         for arg in self.as_vspipe_args_vec()? {
             let split: Vec<&str> = arg.split_terminator('=').collect();
@@ -433,7 +438,7 @@ static DONE_JSON: OnceCell<DoneJson> = OnceCell::new();
 // Serialize or Deserialize, we need to get a reference directly to the global
 // data
 fn get_done() -> &'static DoneJson {
-    DONE_JSON.get().unwrap()
+    DONE_JSON.get().expect("DONE_JSON should be initialized")
 }
 
 fn init_done(done: DoneJson) -> &'static DoneJson {
@@ -444,13 +449,10 @@ fn init_done(done: DoneJson) -> &'static DoneJson {
 pub fn list_index(params: &[impl AsRef<str>], is_match: fn(&str) -> bool) -> Option<usize> {
     assert!(!params.is_empty(), "received empty list of parameters");
 
-    params.iter().enumerate().find_map(|(idx, s)| {
-        if is_match(s.as_ref()) {
-            Some(idx)
-        } else {
-            None
-        }
-    })
+    params
+        .iter()
+        .enumerate()
+        .find_map(|(idx, s)| is_match(s.as_ref()).then_some(idx))
 }
 
 #[derive(Serialize, Deserialize, Debug, EnumString, IntoStaticStr, Display, Clone)]
@@ -620,6 +622,7 @@ pub fn determine_workers(args: &EncodeArgs) -> anyhow::Result<u64> {
 pub fn hash_path(path: &Path) -> String {
     let mut s = DefaultHasher::new();
     path.hash(&mut s);
+    #[expect(clippy::string_slice, reason = "we know the hash only contains ascii")]
     format!("{:x}", s.finish())[..7].to_string()
 }
 
@@ -629,7 +632,7 @@ fn save_chunk_queue(temp: &str, chunk_queue: &[Chunk]) -> anyhow::Result<()> {
 
     file
     // serializing chunk_queue as json should never fail, so unwrap is OK here
-    .write_all(serde_json::to_string(&chunk_queue).unwrap().as_bytes())
+    .write_all(serde_json::to_string(&chunk_queue)?.as_bytes())
     .with_context(|| format!("Failed to write serialized chunk_queue data to {:?}", &file))?;
 
     Ok(())
@@ -646,25 +649,9 @@ fn read_chunk_queue(temp: &Path) -> anyhow::Result<Vec<Chunk>> {
     let file = Path::new(temp).join("chunks.json");
 
     let contents = fs::read_to_string(&file)
-        .with_context(|| format!("Failed to read chunk queue file {:?}", &file))?;
+        .with_context(|| format!("Failed to read chunk queue file {}", file.display()))?;
 
     Ok(serde_json::from_str(&contents)?)
-}
-
-#[derive(
-    Serialize, Deserialize, Debug, EnumString, IntoStaticStr, Display, Clone, Copy, FromRepr,
-)]
-pub enum ProbingSpeed {
-    #[strum(serialize = "veryslow")]
-    VerySlow = 0,
-    #[strum(serialize = "slow")]
-    Slow = 1,
-    #[strum(serialize = "medium")]
-    Medium = 2,
-    #[strum(serialize = "fast")]
-    Fast = 3,
-    #[strum(serialize = "veryfast")]
-    VeryFast = 4,
 }
 
 #[derive(Serialize, Deserialize, Debug, EnumString, IntoStaticStr, Display, Clone)]

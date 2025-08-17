@@ -1,19 +1,19 @@
 use std::{
     borrow::Cow,
     cmp::{self, Reverse},
-    convert::TryInto,
     ffi::OsString,
     fs::{self, File},
-    io::Write,
+    io::{BufRead, BufReader, Write},
     iter,
     path::{Path, PathBuf},
-    process::{exit, Stdio},
+    process::{exit, ChildStderr, Command, Stdio},
     sync::{
         atomic::{self, AtomicBool, AtomicUsize},
         mpsc,
         Arc,
+        Mutex,
     },
-    thread::available_parallelism,
+    thread::{self, available_parallelism},
 };
 
 use anyhow::Context;
@@ -23,10 +23,6 @@ use colored::*;
 use itertools::Itertools;
 use num_traits::cast::ToPrimitive;
 use rand::{prelude::SliceRandom, rng};
-use tokio::{
-    io::{AsyncBufReadExt, BufReader},
-    process::ChildStderr,
-};
 use tracing::{debug, error, info, warn};
 
 use crate::{
@@ -59,7 +55,7 @@ use crate::{
     settings::{EncodeArgs, InputPixelFormat},
     split::segment,
     vapoursynth::create_vs_file,
-    zones::parse_zones,
+    zones::{parse_zones, validate_zones},
     ChunkMethod,
     ChunkOrdering,
     DashMap,
@@ -166,7 +162,7 @@ impl Av1anContext {
                 audio_done: AtomicBool::new(false),
             });
 
-            let mut done_file = File::create(&done_path).unwrap();
+            let mut done_file = File::create(&done_path)?;
             done_file.write_all(serde_json::to_string(get_done())?.as_bytes())?;
         };
 
@@ -196,7 +192,7 @@ impl Av1anContext {
                         self.args.chunk_method,
                         self.args.sc_downscale_height,
                         self.args.sc_pix_format,
-                        self.args.scaler.clone(),
+                        &self.args.scaler,
                         *is_proxy,
                     )?;
                     script_path
@@ -208,8 +204,7 @@ impl Av1anContext {
                 Input::VapourSynth {
                     path, ..
                 } => {
-                    let mut dec = VapoursynthDecoder::from_file(path)?;
-                    dec.set_variables(variables_map)?;
+                    let dec = VapoursynthDecoder::from_file(path, variables_map)?;
                     av_scenechange::Decoder::from_decoder_impl(
                         av_decoders::DecoderImpl::Vapoursynth(dec),
                     )?
@@ -218,9 +213,9 @@ impl Av1anContext {
                     &video_input.as_script_text(
                         self.args.sc_downscale_height,
                         self.args.sc_pix_format,
-                        Some(self.args.scaler.clone()),
+                        Some(&self.args.scaler),
                     )?,
-                    Some(variables_map),
+                    variables_map,
                 )?,
             };
             // Getting the details will evaluate the script and produce the VapourSynth
@@ -266,7 +261,7 @@ impl Av1anContext {
         let clip_info = self.args.input.clip_info()?;
         let res = clip_info.resolution;
         let fps_ratio = clip_info.frame_rate;
-        let fps = fps_ratio.to_f64().unwrap();
+        let fps = fps_ratio.to_f64().expect("fps_ratio is not NaN");
         let format = clip_info.format_info;
         let tfc = clip_info.transfer_function_params_adjusted(&self.args.video_params);
         info!(
@@ -315,33 +310,28 @@ impl Av1anContext {
 
         crossbeam_utils::thread::scope(|s| -> anyhow::Result<()> {
             // vapoursynth audio is currently unsupported
-            let audio_thread = if self.args.input.is_video()
-                && (!self.args.resume || !get_done().audio_done.load(atomic::Ordering::SeqCst))
-            {
+            let audio_thread = (self.args.input.is_video()
+                && (!self.args.resume || !get_done().audio_done.load(atomic::Ordering::SeqCst)))
+            .then(|| {
                 let input = self.args.input.as_video_path();
                 let temp = self.args.temp.as_str();
                 let audio_params = self.args.audio_params.as_slice();
-                Some(s.spawn(move |_| {
-                    let audio_output =
-                        crate::ffmpeg::encode_audio(input, temp, audio_params).unwrap();
+                s.spawn(move |_| -> anyhow::Result<_> {
+                    let audio_output = crate::ffmpeg::encode_audio(input, temp, audio_params)?;
                     get_done().audio_done.store(true, atomic::Ordering::SeqCst);
 
                     let progress_file = Path::new(temp).join("done.json");
-                    let mut progress_file = File::create(progress_file).unwrap();
-                    progress_file
-                        .write_all(serde_json::to_string(get_done()).unwrap().as_bytes())
-                        .unwrap();
+                    let mut progress_file = File::create(progress_file)?;
+                    progress_file.write_all(serde_json::to_string(get_done())?.as_bytes())?;
 
                     if let Some(ref audio_output) = audio_output {
-                        let audio_size = audio_output.metadata().unwrap().len();
+                        let audio_size = audio_output.metadata()?.len();
                         set_audio_size(audio_size);
                     }
 
-                    audio_output.is_some()
-                }))
-            } else {
-                None
-            };
+                    Ok(audio_output.is_some())
+                })
+            });
 
             if self.args.workers == 0 {
                 self.args.workers = determine_workers(&self.args)? as usize;
@@ -398,8 +388,9 @@ impl Av1anContext {
             };
 
             let (tx, rx) = mpsc::channel();
-            let handle = s.spawn(|_| {
-                broker.encoding_loop(tx, self.args.set_thread_affinity, total_chunks as u32);
+            let handle = s.spawn(|_| -> anyhow::Result<()> {
+                broker.encoding_loop(tx, self.args.set_thread_affinity, total_chunks as u32)?;
+                Ok(())
             });
 
             // Queue::encoding_loop only sends a message if there was an error (meaning a
@@ -409,14 +400,17 @@ impl Av1anContext {
                 exit(1);
             }
 
-            handle.join().unwrap();
+            handle.join().expect("thread should join successfully")?;
 
             finish_progress_bar();
 
             // TODO add explicit parameter to concatenation functions to control whether
             // audio is also muxed in
-            let _audio_output_exists =
-                audio_thread.is_some_and(|audio_thread| audio_thread.join().unwrap());
+            let _audio_output_exists = if let Some(audio_thread) = audio_thread {
+                audio_thread.join().expect("thread should join successfully")?
+            } else {
+                false
+            };
 
             debug!(
                 "encoding finished, concatenating with {concat}",
@@ -456,25 +450,22 @@ impl Av1anContext {
                 },
             }
 
-            if self.args.vmaf || self.args.target_quality.is_some() {
-                let vmaf_res = if let Some(ref tq) = self.args.target_quality {
-                    if tq.vmaf_res == "inputres" {
-                        let inputres = self.args.input.clip_info()?.resolution;
-                        format!("{width}x{height}", width = inputres.0, height = inputres.1)
-                    } else {
-                        tq.vmaf_res.clone()
-                    }
+            if self.args.vmaf {
+                let vmaf_res = if self.args.target_quality.vmaf_res == "inputres" {
+                    let inputres = self.args.input.clip_info()?.resolution;
+                    format!("{width}x{height}", width = inputres.0, height = inputres.1)
                 } else {
-                    self.args.vmaf_res.clone()
+                    self.args.target_quality.vmaf_res.clone()
                 };
 
-                let vmaf_model = self.args.vmaf_path.as_deref().or_else(|| {
-                    self.args.target_quality.as_ref().and_then(|tq| tq.model.as_deref())
-                });
+                let vmaf_model =
+                    self.args.vmaf_path.as_deref().or(self.args.target_quality.model.as_deref());
                 let vmaf_scaler = "bicubic";
-                let vmaf_filter = self.args.vmaf_filter.as_deref().or_else(|| {
-                    self.args.target_quality.as_ref().and_then(|tq| tq.vmaf_filter.as_deref())
-                });
+                let vmaf_filter = self.args.vmaf_filter.as_deref().or(self
+                    .args
+                    .target_quality
+                    .vmaf_filter
+                    .as_deref());
 
                 if self.args.vmaf {
                     let vmaf_threads = available_parallelism().map_or(1, std::num::NonZero::get);
@@ -488,6 +479,7 @@ impl Av1anContext {
                         1,
                         vmaf_filter,
                         vmaf_threads,
+                        &self.args.target_quality.probing_vmaf_features,
                     ) {
                         error!("VMAF calculation failed with error: {e}");
                     }
@@ -508,7 +500,7 @@ impl Av1anContext {
 
             Ok(())
         })
-        .unwrap()?;
+        .expect("thread should spawn successfully")?;
 
         Ok(())
     }
@@ -517,7 +509,10 @@ impl Av1anContext {
     fn read_queue_files(source_path: &Path) -> anyhow::Result<Vec<PathBuf>> {
         let mut queue_files = fs::read_dir(source_path)
             .with_context(|| {
-                format!("Failed to read queue files from source path {source_path:?}")
+                format!(
+                    "Failed to read queue files from source path {}",
+                    source_path.display()
+                )
             })?
             .map(|res| res.map(|e| e.path()))
             .collect::<Result<Vec<_>, _>>()?;
@@ -539,7 +534,7 @@ impl Av1anContext {
         current_pass: u8,
         worker_id: usize,
         padding: usize,
-    ) -> Result<(), (Box<EncoderCrash>, u64)> {
+    ) -> Result<(), (anyhow::Error, u64)> {
         update_mp_chunk(worker_id, chunk.index, padding);
 
         let fpf_file = Path::new(&chunk.temp)
@@ -551,24 +546,26 @@ impl Av1anContext {
         let mut enc_cmd = if chunk.passes == 1 {
             chunk.encoder.compose_1_1_pass(video_params, chunk.output())
         } else if current_pass == 1 {
-            chunk.encoder.compose_1_2_pass(video_params, fpf_file.to_str().unwrap())
-        } else {
             chunk
                 .encoder
-                .compose_2_2_pass(video_params, fpf_file.to_str().unwrap(), chunk.output())
+                .compose_1_2_pass(video_params, fpf_file.to_string_lossy().as_ref())
+        } else {
+            chunk.encoder.compose_2_2_pass(
+                video_params,
+                fpf_file.to_string_lossy().as_ref(),
+                chunk.output(),
+            )
         };
 
         if let Some(per_shot_target_quality_cq) = chunk.tq_cq {
-            enc_cmd = chunk.encoder.man_command(enc_cmd, per_shot_target_quality_cq as usize);
+            enc_cmd = chunk.encoder.man_command(enc_cmd, per_shot_target_quality_cq);
         }
 
-        let rt = tokio::runtime::Builder::new_current_thread().enable_io().build().unwrap();
-
         let (source_pipe_stderr, ffmpeg_pipe_stderr, enc_output, enc_stderr, frame) =
-            rt.block_on(async {
+            thread::scope(|scope| -> Result<_, (anyhow::Error, u64)> {
                 let mut source_pipe = if let [source, args @ ..] = &*chunk.source_cmd {
-                    let mut command = tokio::process::Command::new(source);
-                    for arg in chunk.input.as_vspipe_args_vec().unwrap() {
+                    let mut command = Command::new(source);
+                    for arg in chunk.input.as_vspipe_args_vec().map_err(|e| (e, 0))? {
                         command.args(["-a", &arg]);
                     }
                     command
@@ -576,15 +573,15 @@ impl Av1anContext {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn()
-                        .unwrap()
+                        .map_err(|e| (e.into(), 0))?
                 } else {
                     unreachable!()
                 };
 
                 let source_pipe_stdout: Stdio =
-                    source_pipe.stdout.take().unwrap().try_into().unwrap();
-
-                let source_pipe_stderr = source_pipe.stderr.take().unwrap();
+                    source_pipe.stdout.take().expect("source_pipe should have stdout").into();
+                let source_pipe_stderr =
+                    source_pipe.stderr.take().expect("source_pipe should have stderr");
 
                 // converts the pixel format
                 let create_ffmpeg_pipe = |pipe_from: Stdio, source_pipe_stderr: ChildStderr| {
@@ -594,25 +591,26 @@ impl Av1anContext {
                     );
 
                     let mut ffmpeg_pipe = if let [ffmpeg, args @ ..] = &*ffmpeg_pipe {
-                        tokio::process::Command::new(ffmpeg)
+                        Command::new(ffmpeg)
                             .args(args)
                             .stdin(pipe_from)
                             .stdout(Stdio::piped())
                             .stderr(Stdio::piped())
                             .spawn()
-                            .unwrap()
+                            .map_err(|e| (e.into(), 0))?
                     } else {
                         unreachable!()
                     };
 
                     let ffmpeg_pipe_stdout: Stdio =
-                        ffmpeg_pipe.stdout.take().unwrap().try_into().unwrap();
-                    let ffmpeg_pipe_stderr = ffmpeg_pipe.stderr.take().unwrap();
-                    (
+                        ffmpeg_pipe.stdout.take().expect("ffmpeg_pipe should have stdout").into();
+                    let ffmpeg_pipe_stderr =
+                        ffmpeg_pipe.stderr.take().expect("ffmpeg_pipe should have stderr");
+                    Ok((
                         ffmpeg_pipe_stdout,
                         source_pipe_stderr,
                         Some(ffmpeg_pipe_stderr),
-                    )
+                    ))
                 };
 
                 let (y4m_pipe, source_pipe_stderr, mut ffmpeg_pipe_stderr) =
@@ -624,7 +622,7 @@ impl Av1anContext {
                                 if self.args.output_pix_format.format == *format {
                                     (source_pipe_stdout, source_pipe_stderr, None)
                                 } else {
-                                    create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)
+                                    create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)?
                                 }
                             },
                             InputPixelFormat::VapourSynth {
@@ -633,67 +631,65 @@ impl Av1anContext {
                                 if self.args.output_pix_format.bit_depth == *bit_depth {
                                     (source_pipe_stdout, source_pipe_stderr, None)
                                 } else {
-                                    create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)
+                                    create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)?
                                 }
                             },
                         }
                     } else {
-                        create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)
+                        create_ffmpeg_pipe(source_pipe_stdout, source_pipe_stderr)?
                     };
 
-                let mut source_reader = BufReader::new(source_pipe_stderr).lines();
-                let ffmpeg_reader =
-                    ffmpeg_pipe_stderr.take().map(|stderr| BufReader::new(stderr).lines());
+                let source_reader = BufReader::new(source_pipe_stderr);
+                let ffmpeg_reader = ffmpeg_pipe_stderr.take().map(BufReader::new);
 
-                let pipe_stderr = Arc::new(parking_lot::Mutex::new(String::with_capacity(128)));
+                let pipe_stderr = Arc::new(Mutex::new(String::with_capacity(128)));
                 let p_stdr2 = Arc::clone(&pipe_stderr);
 
-                let ffmpeg_stderr = if ffmpeg_reader.is_some() {
-                    Some(Arc::new(parking_lot::Mutex::new(String::with_capacity(
-                        128,
-                    ))))
-                } else {
-                    None
-                };
+                let ffmpeg_stderr = ffmpeg_reader
+                    .is_some()
+                    .then(|| Arc::new(Mutex::new(String::with_capacity(128))));
 
                 let f_stdr2 = ffmpeg_stderr.clone();
 
-                tokio::spawn(async move {
-                    while let Some(line) = source_reader.next_line().await.unwrap() {
-                        p_stdr2.lock().push_str(&line);
-                        p_stdr2.lock().push('\n');
+                scope.spawn(move || {
+                    for line in source_reader.lines() {
+                        let mut lock = p_stdr2.lock().expect("mutex should acquire lock");
+                        lock.push_str(&line.expect("should read line successfully"));
+                        lock.push('\n');
                     }
                 });
-                if let Some(mut ffmpeg_reader) = ffmpeg_reader {
-                    let f_stdr2 = f_stdr2.unwrap();
-                    tokio::spawn(async move {
-                        while let Some(line) = ffmpeg_reader.next_line().await.unwrap() {
-                            f_stdr2.lock().push_str(&line);
-                            f_stdr2.lock().push('\n');
+                if let Some(ffmpeg_reader) = ffmpeg_reader {
+                    let f_stdr2 = f_stdr2.expect("f_stdr2 should exist if ffmpeg_reader exists");
+                    scope.spawn(move || {
+                        for line in ffmpeg_reader.lines() {
+                            let mut lock = f_stdr2.lock().expect("mutex should acquire lock");
+                            lock.push_str(&line.expect("should read line successfully"));
+                            lock.push('\n');
                         }
                     });
                 }
 
                 let mut enc_pipe = if let [encoder, args @ ..] = &*enc_cmd {
-                    tokio::process::Command::new(encoder)
+                    Command::new(encoder)
                         .args(args)
                         .stdin(y4m_pipe)
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .spawn()
-                        .unwrap()
+                        .map_err(|e| (e.into(), 0))?
                 } else {
                     unreachable!()
                 };
 
                 let mut frame = 0;
 
-                let mut reader = BufReader::new(enc_pipe.stderr.take().unwrap());
+                let mut reader =
+                    BufReader::new(enc_pipe.stderr.take().expect("enc_pipe should have stderr"));
 
                 let mut buf = Vec::with_capacity(128);
                 let mut enc_stderr = String::with_capacity(128);
 
-                while let Ok(read) = reader.read_until(b'\r', &mut buf).await {
+                while let Ok(read) = reader.read_until(b'\r', &mut buf) {
                     if read == 0 {
                         break;
                     }
@@ -724,28 +720,31 @@ impl Av1anContext {
                     buf.clear();
                 }
 
-                let enc_output = enc_pipe.wait_with_output().await.unwrap();
+                let enc_output = enc_pipe.wait_with_output().expect("enc_pipe should finish");
 
-                let source_pipe_stderr = pipe_stderr.lock().clone();
-                let ffmpeg_pipe_stderr = ffmpeg_stderr.map(|x| x.lock().clone());
-                (
+                let source_pipe_stderr =
+                    pipe_stderr.lock().expect("mutex should acquire lock").clone();
+                let ffmpeg_pipe_stderr =
+                    ffmpeg_stderr.map(|x| x.lock().expect("mutex should acquire lock").clone());
+                Ok((
                     source_pipe_stderr,
                     ffmpeg_pipe_stderr,
                     enc_output,
                     enc_stderr,
                     frame,
-                )
-            });
+                ))
+            })?;
 
         if !enc_output.status.success() {
             return Err((
-                Box::new(EncoderCrash {
+                EncoderCrash {
                     exit_status:        enc_output.status,
                     source_pipe_stderr: source_pipe_stderr.into(),
                     ffmpeg_pipe_stderr: ffmpeg_pipe_stderr.map(Into::into),
                     stderr:             enc_stderr.into(),
                     stdout:             enc_output.stdout.into(),
-                }),
+                }
+                .into(),
                 frame,
             ));
         }
@@ -773,13 +772,14 @@ impl Av1anContext {
 
             if let Some(err_str) = err_str {
                 return Err((
-                    Box::new(EncoderCrash {
+                    EncoderCrash {
                         exit_status:        enc_output.status,
                         source_pipe_stderr: source_pipe_stderr.into(),
                         ffmpeg_pipe_stderr: ffmpeg_pipe_stderr.map(Into::into),
                         stderr:             enc_stderr.into(),
                         stdout:             err_str.into(),
-                    }),
+                    }
+                    .into(),
                     frame,
                 ));
             }
@@ -797,19 +797,25 @@ impl Av1anContext {
                 | ChunkMethod::LSMASH
                 | ChunkMethod::DGDECNV
                 | ChunkMethod::BESTSOURCE => {
-                    let vs_script = self.vs_script.as_ref().unwrap().as_path();
+                    let vs_script =
+                        self.vs_script.as_ref().expect("vs_script should exist").as_path();
                     let vs_proxy_script = self.vs_proxy_script.as_deref();
-                    self.create_video_queue_vs(scenes, vs_script, vs_proxy_script)
+                    self.create_video_queue_vs(scenes, vs_script, vs_proxy_script, &[])?
                 },
                 ChunkMethod::Hybrid => self.create_video_queue_hybrid(scenes)?,
-                ChunkMethod::Select => self.create_video_queue_select(scenes),
+                ChunkMethod::Select => self.create_video_queue_select(scenes)?,
                 ChunkMethod::Segment => self.create_video_queue_segment(scenes)?,
             },
             Input::VapourSynth {
-                path, ..
-            } => {
-                self.create_video_queue_vs(scenes, path.as_path(), self.vs_proxy_script.as_deref())
-            },
+                path,
+                vspipe_args,
+                ..
+            } => self.create_video_queue_vs(
+                scenes,
+                path.as_path(),
+                self.vs_proxy_script.as_deref(),
+                vspipe_args.iter().map(|arg| arg.as_str()).collect::<Vec<_>>().as_slice(),
+            )?,
         };
 
         match self.args.chunk_order {
@@ -841,6 +847,7 @@ impl Av1anContext {
             self.scene_factory = SceneFactory::from_scenes_file(&scene_file)?;
         } else {
             let zones = parse_zones(&self.args, self.frames)?;
+            validate_zones(&self.args, &zones)?;
             self.scene_factory.compute_scenes(&self.args, &zones)?;
             self.scene_factory.write_scenes_to_file(scene_file)?;
         }
@@ -915,6 +922,9 @@ impl Av1anContext {
             passes: overrides.as_ref().map_or(self.args.passes, |ovr| ovr.passes),
             encoder: overrides.as_ref().map_or(self.args.encoder, |ovr| ovr.encoder),
             noise_size: self.args.photon_noise_size,
+            target_quality: overrides.as_ref().map_or(self.args.target_quality.clone(), |ovr| {
+                ovr.target_quality.clone().map_or(self.args.target_quality.clone(), |tq| tq)
+            }),
             tq_cq: None,
             ignore_frame_mismatch: self.args.ignore_frame_mismatch,
         };
@@ -922,12 +932,12 @@ impl Av1anContext {
             overrides.map_or(self.args.photon_noise, |ovr| ovr.photon_noise),
             self.args.chroma_noise,
         )?;
-        if let Some(ref tq) = self.args.target_quality {
-            tq.per_shot_target_quality_routine(
-                &mut chunk,
+        if chunk.target_quality.target.is_some() {
+            chunk.tq_cq = Some(chunk.target_quality.per_shot_target_quality(
+                &chunk,
                 None,
-                self.args.vapoursynth_plugins.as_ref(),
-            )?;
+                self.args.vapoursynth_plugins,
+            )?);
         }
         Ok(chunk)
     }
@@ -937,6 +947,7 @@ impl Av1anContext {
         index: usize,
         vs_script: &Path,
         vs_proxy_script: Option<&Path>,
+        vspipe_args: &[&str],
         scene: &Scene,
         frame_rate: f64,
     ) -> anyhow::Result<Chunk> {
@@ -944,8 +955,13 @@ impl Av1anContext {
         // next chunk
         let frame_end = scene.end_frame - 1;
 
-        fn gen_vspipe_cmd(vs_script: &Path, scene_start: usize, scene_end: usize) -> Vec<OsString> {
-            into_vec![
+        fn gen_vspipe_cmd(
+            vs_script: &Path,
+            vs_args: &[&str],
+            scene_start: usize,
+            scene_end: usize,
+        ) -> Vec<OsString> {
+            let mut command: Vec<OsString> = into_vec![
                 "vspipe",
                 vs_script,
                 "-c",
@@ -955,12 +971,18 @@ impl Av1anContext {
                 scene_start.to_string(),
                 "-e",
                 scene_end.to_string(),
-            ]
+            ];
+            for arg in vs_args {
+                command.push("-a".into());
+                command.push(arg.into());
+            }
+            command
         }
 
-        let vspipe_cmd_gen = gen_vspipe_cmd(vs_script, scene.start_frame, frame_end);
-        let vspipe_proxy_cmd_gen = vs_proxy_script
-            .map(|vs_proxy_script| gen_vspipe_cmd(vs_proxy_script, scene.start_frame, frame_end));
+        let vspipe_cmd_gen = gen_vspipe_cmd(vs_script, vspipe_args, scene.start_frame, frame_end);
+        let vspipe_proxy_cmd_gen = vs_proxy_script.map(|vs_proxy_script| {
+            gen_vspipe_cmd(vs_proxy_script, vspipe_args, scene.start_frame, frame_end)
+        });
 
         let output_ext = self.args.encoder.output_extension();
 
@@ -973,19 +995,29 @@ impl Av1anContext {
                 script_text: self.args.input.as_script_text(
                     self.args.sc_downscale_height,
                     self.args.sc_pix_format,
-                    Some(self.args.scaler.clone()),
+                    Some(&self.args.scaler),
                 )?,
                 is_proxy:    false,
             },
             proxy: if let Some(vs_proxy_script) = vs_proxy_script {
                 Some(Input::VapourSynth {
                     path:        vs_proxy_script.to_path_buf(),
-                    vspipe_args: self.args.proxy.as_ref().unwrap().as_vspipe_args_vec()?,
-                    script_text: self.args.proxy.as_ref().unwrap().as_script_text(
-                        self.args.sc_downscale_height,
-                        self.args.sc_pix_format,
-                        Some(self.args.scaler.clone()),
-                    )?,
+                    vspipe_args: self
+                        .args
+                        .proxy
+                        .as_ref()
+                        .expect("proxy should be set")
+                        .as_vspipe_args_vec()?,
+                    script_text: self
+                        .args
+                        .proxy
+                        .as_ref()
+                        .expect("proxy should be set")
+                        .as_script_text(
+                            self.args.sc_downscale_height,
+                            self.args.sc_pix_format,
+                            Some(&self.args.scaler),
+                        )?,
                     is_proxy:    true,
                 })
             } else {
@@ -1006,6 +1038,12 @@ impl Av1anContext {
             noise_size: scene.zone_overrides.as_ref().map_or(self.args.photon_noise_size, |ovr| {
                 (ovr.photon_noise_width, ovr.photon_noise_height)
             }),
+            target_quality: scene.zone_overrides.as_ref().map_or(
+                self.args.target_quality.clone(),
+                |ovr| {
+                    ovr.target_quality.clone().unwrap_or_else(|| self.args.target_quality.clone())
+                },
+            ),
             tq_cq: None,
             ignore_frame_mismatch: self.args.ignore_frame_mismatch,
         };
@@ -1027,23 +1065,42 @@ impl Av1anContext {
         scenes: &[Scene],
         vs_script: &Path,
         vs_proxy_script: Option<&Path>,
-    ) -> Vec<Chunk> {
-        let frame_rate = self.args.input.clip_info().unwrap().frame_rate.to_f64().unwrap();
+        vspipe_args: &[&str],
+    ) -> anyhow::Result<Vec<Chunk>> {
+        let frame_rate = self
+            .args
+            .input
+            .clip_info()?
+            .frame_rate
+            .to_f64()
+            .expect("frame rate should not be NaN");
         let chunk_queue: Vec<Chunk> = scenes
             .iter()
             .enumerate()
             .map(|(index, scene)| {
-                self.create_vs_chunk(index, vs_script, vs_proxy_script, scene, frame_rate)
-                    .unwrap()
+                self.create_vs_chunk(
+                    index,
+                    vs_script,
+                    vs_proxy_script,
+                    vspipe_args,
+                    scene,
+                    frame_rate,
+                )
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
-        chunk_queue
+        Ok(chunk_queue)
     }
 
-    fn create_video_queue_select(&self, scenes: &[Scene]) -> Vec<Chunk> {
+    fn create_video_queue_select(&self, scenes: &[Scene]) -> anyhow::Result<Vec<Chunk>> {
         let input = self.args.input.as_video_path();
-        let frame_rate = self.args.input.clip_info().unwrap().frame_rate.to_f64().unwrap();
+        let frame_rate = self
+            .args
+            .input
+            .clip_info()?
+            .frame_rate
+            .to_f64()
+            .expect("frame rate should not be NaN");
 
         let chunk_queue: Vec<Chunk> = scenes
             .iter()
@@ -1057,23 +1114,28 @@ impl Av1anContext {
                     frame_rate,
                     scene.zone_overrides.clone(),
                 )
-                .unwrap()
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
-        chunk_queue
+        Ok(chunk_queue)
     }
 
     fn create_video_queue_segment(&self, scenes: &[Scene]) -> anyhow::Result<Vec<Chunk>> {
         let input = self.args.input.as_video_path();
-        let frame_rate = self.args.input.clip_info()?.frame_rate.to_f64().unwrap();
+        let frame_rate = self
+            .args
+            .input
+            .clip_info()?
+            .frame_rate
+            .to_f64()
+            .expect("frame rate should not be NaN");
 
         debug!("Splitting video");
         segment(
             input,
             &self.args.temp,
             &scenes.iter().skip(1).map(|scene| scene.start_frame).collect::<Vec<usize>>(),
-        );
+        )?;
         debug!("Splitting done");
 
         let source_path = Path::new(&self.args.temp).join("split");
@@ -1090,22 +1152,27 @@ impl Av1anContext {
             .map(|(index, file)| {
                 self.create_chunk_from_segment(
                     index,
-                    file.as_path().to_str().unwrap(),
+                    &file.as_path().to_string_lossy(),
                     frame_rate,
                     scenes[index].zone_overrides.clone(),
                 )
-                .unwrap()
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         Ok(chunk_queue)
     }
 
     fn create_video_queue_hybrid(&self, scenes: &[Scene]) -> anyhow::Result<Vec<Chunk>> {
         let input = self.args.input.as_video_path();
-        let frame_rate = self.args.input.clip_info()?.frame_rate.to_f64().unwrap();
+        let frame_rate = self
+            .args
+            .input
+            .clip_info()?
+            .frame_rate
+            .to_f64()
+            .expect("frame rate should not be NaN");
 
-        let keyframes = crate::ffmpeg::get_keyframes(input).unwrap();
+        let keyframes = crate::ffmpeg::get_keyframes(input)?;
 
         let to_split: Vec<usize> = keyframes
             .iter()
@@ -1114,7 +1181,7 @@ impl Av1anContext {
             .collect();
 
         debug!("Segmenting video");
-        segment(input, &self.args.temp, &to_split[1..]);
+        segment(input, &self.args.temp, &to_split[1..])?;
         debug!("Segment done");
 
         let source_path = Path::new(&self.args.temp).join("split");
@@ -1145,9 +1212,8 @@ impl Av1anContext {
                     frame_rate,
                     scene.zone_overrides.clone(),
                 )
-                .unwrap()
             })
-            .collect();
+            .collect::<anyhow::Result<Vec<_>>>()?;
 
         Ok(chunk_queue)
     }
@@ -1209,6 +1275,9 @@ impl Av1anContext {
             passes: overrides.as_ref().map_or(self.args.passes, |ovr| ovr.passes),
             encoder: overrides.as_ref().map_or(self.args.encoder, |ovr| ovr.encoder),
             noise_size: self.args.photon_noise_size,
+            target_quality: overrides.as_ref().map_or(self.args.target_quality.clone(), |ovr| {
+                ovr.target_quality.clone().map_or(self.args.target_quality.clone(), |tq| tq)
+            }),
             tq_cq: None,
             ignore_frame_mismatch: self.args.ignore_frame_mismatch,
         };

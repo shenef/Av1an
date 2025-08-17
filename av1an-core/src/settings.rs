@@ -2,7 +2,7 @@ use std::{
     borrow::{Borrow, Cow},
     cmp::Ordering,
     collections::HashSet,
-    path::{Path, PathBuf},
+    path::{absolute, Path, PathBuf},
     process::{exit, Command},
 };
 
@@ -18,7 +18,6 @@ use crate::{
     metrics::{vmaf::validate_libvmaf, xpsnr::validate_libxpsnr},
     parse::valid_params,
     target_quality::TargetQuality,
-    util::to_absolute_path,
     vapoursynth::{VSZipVersion, VapoursynthPlugins},
     ChunkMethod,
     ChunkOrdering,
@@ -67,7 +66,7 @@ impl InputPixelFormat {
     }
 }
 
-#[allow(clippy::struct_excessive_bools)]
+#[expect(clippy::struct_excessive_bools)]
 #[derive(Debug)]
 pub struct EncodeArgs {
     pub input:       Input,
@@ -117,7 +116,7 @@ pub struct EncodeArgs {
     pub tile_auto:   bool,
 
     pub concat:         ConcatMethod,
-    pub target_quality: Option<TargetQuality>,
+    pub target_quality: TargetQuality,
     pub vmaf:           bool,
     pub vmaf_path:      Option<PathBuf>,
     pub vmaf_res:       String,
@@ -166,110 +165,23 @@ impl EncodeArgs {
             );
         }
 
-        if self.target_quality.is_some() {
-            if self.input.is_vapoursynth() {
-                let input_absolute_path = to_absolute_path(self.input.as_path())?;
-                if !input_absolute_path.starts_with(std::env::current_dir()?) {
-                    warn!(
-                        "Target Quality with VapourSynth script file input not in current working \
-                         directory. It is recommended to run in the same directory."
-                    );
-                }
+        if self.target_quality.target.is_some() && self.input.is_vapoursynth() {
+            let input_absolute_path = absolute(self.input.as_path())?;
+            if !input_absolute_path.starts_with(std::env::current_dir()?) {
+                warn!(
+                    "Target Quality with VapourSynth script file input not in current working \
+                     directory. It is recommended to run in the same directory."
+                );
             }
-
-            match self.target_quality.as_ref().unwrap().metric {
+        }
+        if self.target_quality.target.is_some() {
+            match self.target_quality.metric {
                 TargetMetric::VMAF => validate_libvmaf()?,
-                TargetMetric::SSIMULACRA2 => {
-                    ensure!(
-                        self.vapoursynth_plugins.is_some_and(|p| p.vship)
-                            || self
-                                .vapoursynth_plugins
-                                .is_some_and(|p| p.vszip != VSZipVersion::None),
-                        "SSIMULACRA2 metric requires either Vapoursynth-HIP or VapourSynth Zig \
-                         Image Process to be installed"
-                    );
-                    ensure!(
-                        matches!(
-                            self.chunk_method,
-                            ChunkMethod::LSMASH
-                                | ChunkMethod::FFMS2
-                                | ChunkMethod::BESTSOURCE
-                                | ChunkMethod::DGDECNV
-                        ),
-                        "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for \
-                         SSIMULACRA2"
-                    );
-                },
-                TargetMetric::ButteraugliINF => {
-                    ensure!(
-                        self.vapoursynth_plugins.is_some_and(|p| p.vship)
-                            || self.vapoursynth_plugins.is_some_and(|p| p.julek),
-                        "Butteraugli metric requires either Vapoursynth-HIP or \
-                         vapoursynth-julek-plugin to be installed"
-                    );
-                    ensure!(
-                        matches!(
-                            self.chunk_method,
-                            ChunkMethod::LSMASH
-                                | ChunkMethod::FFMS2
-                                | ChunkMethod::BESTSOURCE
-                                | ChunkMethod::DGDECNV
-                        ),
-                        "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for \
-                         Butteraugli"
-                    );
-                },
-                TargetMetric::Butteraugli3 => {
-                    ensure!(
-                        self.vapoursynth_plugins.is_some_and(|p| p.vship),
-                        "Butteraugli 3 Norm metric requires Vapoursynth-HIP plugin to be installed"
-                    );
-                    ensure!(
-                        matches!(
-                            self.chunk_method,
-                            ChunkMethod::LSMASH
-                                | ChunkMethod::FFMS2
-                                | ChunkMethod::BESTSOURCE
-                                | ChunkMethod::DGDECNV
-                        ),
-                        "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for \
-                         Butteraugli 3 Norm"
-                    );
-                },
-                TargetMetric::XPSNR | TargetMetric::XPSNRWeighted => {
-                    let metric_name = if self.target_quality.as_ref().unwrap().metric
-                        == TargetMetric::XPSNRWeighted
-                    {
-                        "Weighted "
-                    } else {
-                        ""
-                    };
-                    if self.target_quality.as_ref().unwrap().probing_rate > 1 {
-                        ensure!(
-                            self.vapoursynth_plugins.is_some_and(|p| p.vszip == VSZipVersion::New),
-                            format!(
-                                "{metric_name}XPSNR metric with probing rate greater than 1 \
-                                 requires VapourSynth-Zig Image Process R7 or newer to be \
-                                 installed"
-                            )
-                        );
-                        ensure!(
-                            matches!(
-                                self.chunk_method,
-                                ChunkMethod::LSMASH
-                                    | ChunkMethod::FFMS2
-                                    | ChunkMethod::BESTSOURCE
-                                    | ChunkMethod::DGDECNV
-                            ),
-                            format!(
-                                "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for \
-                                 {metric_name}XPSNR with probing rate greater than 1"
-                            )
-                        );
-                    } else {
-                        validate_libxpsnr()?;
-                    }
-                },
+                TargetMetric::SSIMULACRA2 => self.validate_ssimulacra2()?,
+                TargetMetric::ButteraugliINF => self.validate_butteraugli_inf()?,
+                TargetMetric::Butteraugli3 => self.validate_butteraugli_3()?,
+                TargetMetric::XPSNR | TargetMetric::XPSNRWeighted => self
+                    .validate_xpsnr(self.target_quality.metric, self.target_quality.probing_rate)?,
             }
         }
 
@@ -345,26 +257,12 @@ impl EncodeArgs {
             );
         }
 
-        if let Some(vmaf_path) = &self.target_quality.as_ref().and_then(|tq| tq.model.as_ref()) {
+        if let Some(vmaf_path) = self.target_quality.model.as_ref() {
             ensure!(vmaf_path.exists());
         }
 
-        if let Some(target_quality) = &self.target_quality {
-            if target_quality.probes < 4 {
-                warn!("Target quality with less than 4 probes is experimental and not recommended");
-            }
-
-            if let Some(resolution) = &target_quality.probe_res {
-                match resolution.split('x').collect::<Vec<&str>>().as_slice() {
-                    [width_str, height_str] => {
-                        match (width_str.parse::<u32>(), height_str.parse::<u32>()) {
-                            (Ok(_width), Ok(_height)) => {},
-                            _ => bail!("Failed to parse Probe Resolution"),
-                        }
-                    },
-                    _ => bail!("Probe Resolution must be in the format widthxheight"),
-                }
-            }
+        if self.target_quality.probes < 4 {
+            warn!("Target quality with fewer than 4 probes is experimental and not recommended");
         }
 
         let encoder_bin = self.encoder.bin();
@@ -393,17 +291,17 @@ impl EncodeArgs {
                     if skip && !(param.starts_with("-") && param != "-1") {
                         skip = false;
                         continue;
-                    } else {
-                        skip = false;
                     }
+
+                    skip = false;
                     if (param.starts_with("-") && param != "-1")
                         && self.video_params.contains(&param)
                     {
                         skip = true;
                         continue;
-                    } else {
-                        _default_params.push(param);
                     }
+
+                    _default_params.push(param);
                 }
                 self.video_params = chain!(_default_params, self.video_params.clone()).collect();
             }
@@ -437,14 +335,14 @@ impl EncodeArgs {
         }
 
         if !self.force {
-            self.validate_encoder_params();
+            self.validate_encoder_params()?;
             self.check_rate_control();
         }
 
         Ok(())
     }
 
-    fn validate_encoder_params(&self) {
+    fn validate_encoder_params(&self) -> anyhow::Result<()> {
         let video_params: Vec<&str> = self
             .video_params
             .iter()
@@ -463,7 +361,7 @@ impl EncodeArgs {
 
         let help_text = {
             let [cmd, arg] = self.encoder.help_command();
-            String::from_utf8(Command::new(cmd).arg(arg).output().unwrap().stdout).unwrap()
+            String::from_utf8_lossy(&Command::new(cmd).arg(arg).output()?.stdout).to_string()
         };
         let valid_params = valid_params(&help_text, self.encoder);
         let invalid_params = invalid_params(&video_params, &valid_params);
@@ -482,6 +380,8 @@ impl EncodeArgs {
             println!("\nTo continue anyway, run av1an with '--force'");
             exit(1);
         }
+
+        Ok(())
     }
 
     /// Warns if rate control was not specified in encoder arguments
@@ -525,6 +425,92 @@ impl EncodeArgs {
                 .all(|&b| (b as char).is_ascii_digit())
         }
     }
+
+    #[inline]
+    pub fn validate_ssimulacra2(&self) -> anyhow::Result<()> {
+        ensure!(
+            self.vapoursynth_plugins.is_some_and(|p| p.vship)
+                || self.vapoursynth_plugins.is_some_and(|p| p.vszip != VSZipVersion::None),
+            "SSIMULACRA2 metric requires either Vapoursynth-HIP or VapourSynth Zig Image Process \
+             to be installed"
+        );
+        self.ensure_chunk_method(
+            "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for SSIMULACRA2"
+                .to_string(),
+        )?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn validate_butteraugli_inf(&self) -> anyhow::Result<()> {
+        ensure!(
+            self.vapoursynth_plugins.is_some_and(|p| p.vship)
+                || self.vapoursynth_plugins.is_some_and(|p| p.julek),
+            "Butteraugli metric requires either Vapoursynth-HIP or vapoursynth-julek-plugin to be \
+             installed"
+        );
+        self.ensure_chunk_method(
+            "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for butteraugli"
+                .to_string(),
+        )?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn validate_butteraugli_3(&self) -> anyhow::Result<()> {
+        ensure!(
+            self.vapoursynth_plugins.is_some_and(|p| p.vship),
+            "Butteraugli 3 Norm metric requires Vapoursynth-HIP plugin to be installed"
+        );
+        self.ensure_chunk_method(
+            "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for butteraugli 3-Norm"
+                .to_string(),
+        )?;
+
+        Ok(())
+    }
+
+    #[inline]
+    pub fn validate_xpsnr(&self, metric: TargetMetric, probing_rate: usize) -> anyhow::Result<()> {
+        let metric_name = if metric == TargetMetric::XPSNRWeighted {
+            "Weighted XPSNR"
+        } else {
+            "XPSNR"
+        };
+        if probing_rate > 1 {
+            ensure!(
+                self.vapoursynth_plugins.is_some_and(|p| p.vszip == VSZipVersion::New),
+                format!(
+                    "{metric_name} metric with probing rate greater than 1 requires \
+                     VapourSynth-Zig Image Process R7 or newer to be installed"
+                )
+            );
+            self.ensure_chunk_method(format!(
+                "Chunk method must be lsmash, ffms2, bestsource, or dgdecnv for {metric_name} \
+                 metric with probing rate greater than 1"
+            ))?;
+        } else {
+            validate_libxpsnr()?;
+        }
+
+        Ok(())
+    }
+
+    fn ensure_chunk_method(&self, error_message: String) -> anyhow::Result<()> {
+        ensure!(
+            matches!(
+                self.chunk_method,
+                ChunkMethod::LSMASH
+                    | ChunkMethod::FFMS2
+                    | ChunkMethod::BESTSOURCE
+                    | ChunkMethod::DGDECNV
+            ),
+            error_message
+        );
+        Ok(())
+    }
 }
 
 #[must_use]
@@ -552,13 +538,7 @@ pub(crate) fn suggest_fix<'a>(
         .iter()
         .map(|arg| (arg, strsim::jaro_winkler(arg, wrong_arg)))
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(Ordering::Less))
-        .and_then(|(suggestion, score)| {
-            if score > MIN_THRESHOLD {
-                Some(suggestion.borrow())
-            } else {
-                None
-            }
-        })
+        .and_then(|(suggestion, score)| (score > MIN_THRESHOLD).then(|| suggestion.borrow()))
 }
 
 pub(crate) fn insert_noise_table_params(
@@ -569,7 +549,7 @@ pub(crate) fn insert_noise_table_params(
     match encoder {
         Encoder::aom => {
             video_params.retain(|param| !param.starts_with("--denoise-noise-level="));
-            video_params.push(format!("--film-grain-table={}", table.to_str().unwrap()));
+            video_params.push(format!("--film-grain-table={}", table.to_string_lossy()));
         },
         Encoder::svt_av1 => {
             let film_grain_idx =
@@ -579,7 +559,7 @@ pub(crate) fn insert_noise_table_params(
                 video_params.remove(idx);
             }
             video_params.push("--fgs-table".to_string());
-            video_params.push(table.to_str().unwrap().to_string());
+            video_params.push(table.to_string_lossy().to_string());
         },
         Encoder::rav1e => {
             let photon_noise_idx =
@@ -589,7 +569,7 @@ pub(crate) fn insert_noise_table_params(
                 video_params.remove(idx);
             }
             video_params.push("--photon-noise-table".to_string());
-            video_params.push(table.to_str().unwrap().to_string());
+            video_params.push(table.to_string_lossy().to_string());
         },
         _ => bail!("This encoder does not support grain synth through av1an"),
     }
